@@ -25,8 +25,25 @@ const missionSchema = {
     x: { type: 'number' },
     y: { type: 'number' },
     companionLine: { type: 'string' },
+    placeDetail: { type: 'string' },
+    storeDetail: { type: 'string' },
+    foodDetail: { type: 'string' },
   },
-  required: ['codename', 'title', 'clue', 'zone', 'proof', 'mood', 'reward', 'x', 'y', 'companionLine'],
+  required: [
+    'codename',
+    'title',
+    'clue',
+    'zone',
+    'proof',
+    'mood',
+    'reward',
+    'x',
+    'y',
+    'companionLine',
+    'placeDetail',
+    'storeDetail',
+    'foodDetail',
+  ],
 };
 
 const judgeSchema = {
@@ -182,14 +199,14 @@ async function handleMissionNext(request, response) {
   const result = await openai.responses.create({
     model: model(),
     input: [
-      {
-        role: 'system',
-        content:
-          'You are Agent 1, the live Game Master for Busan AI Quest. Create unpredictable, safe walking missions around Busan. Do not name exact businesses. Do not require purchases. Make missions location-aware, playful, and judgeable by photo plus short answer. Codename must be two short words, 18 characters max. The companionLine must be atmospheric and must not name the exact target object, place, or answer. Return only the requested structured JSON.',
-      },
+        {
+          role: 'system',
+          content:
+          'You are Agent 1, the live Game Master for Busan AI Quest. Create unpredictable, safe walking missions around Busan. Do not require purchases. Make missions location-aware, playful, and judgeable by photo plus short answer. Codename must be two short words, 18 characters max. The companionLine must be atmospheric and must not name the exact target object, place, or answer. Also write short discovery-card copy for a nearby place, local store, and food place so the player feels drawn into the area without spoiling the solution. Do not invent factual claims about named businesses; keep discovery copy sensory and broadly applicable. Return only the requested structured JSON.',
+        },
       {
         role: 'user',
-        content: `Create the next mission from this game context:\n${JSON.stringify(context, null, 2)}\n\nRules: x and y are UI map coordinates from 18 to 82. The title must be an action mission. The clue must be indirect, not an exact answer. The proof should be one short validation instruction. Codename should fit on a mobile game card.`,
+        content: `Create the next mission from this game context:\n${JSON.stringify(context, null, 2)}\n\nRules: x and y are UI map coordinates from 18 to 82. The title must be an action mission. The clue must be indirect, not an exact answer. The proof should be one short validation instruction. Codename should fit on a mobile game card. placeDetail, storeDetail, and foodDetail must each be one vivid sentence under 110 characters.`,
       },
     ],
     text: {
@@ -216,6 +233,9 @@ async function handleMissionNext(request, response) {
       x: clampNumber(mission.x, 18, 82, 48),
       y: clampNumber(mission.y, 22, 78, 50),
       companionLine: String(mission.companionLine || 'The route changed. I will walk with you, but I will not spoil it.').slice(0, 160),
+      placeDetail: String(mission.placeDetail || 'A nearby scene gives the mission its local texture.').slice(0, 130),
+      storeDetail: String(mission.storeDetail || 'Small shop details can turn the walk into a memory.').slice(0, 130),
+      foodDetail: String(mission.foodDetail || 'A food stop nearby carries the flavor of the market.').slice(0, 130),
     },
   });
 }

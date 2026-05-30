@@ -660,6 +660,121 @@ textarea::placeholder {
   color: var(--coral);
 }
 
+.discovery-panel {
+  display: grid;
+  gap: 7px;
+}
+
+.discovery-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--amber);
+  font-size: 0.7rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.discovery-head span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.discovery-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.discovery-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-strong);
+}
+
+.discovery-card img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1.3 / 1;
+  object-fit: cover;
+  background: #12262d;
+}
+
+.discovery-copy {
+  display: grid;
+  gap: 5px;
+  padding: 8px;
+}
+
+.discovery-label,
+.discovery-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  color: var(--mint);
+  font-size: 0.62rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.discovery-store .discovery-label {
+  color: var(--amber);
+}
+
+.discovery-food .discovery-label {
+  color: var(--coral);
+}
+
+.discovery-card h2 {
+  margin: 0;
+  overflow: hidden;
+  font-size: 0.78rem;
+  line-height: 1.1;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.discovery-card p {
+  display: -webkit-box;
+  min-height: 2.42em;
+  margin: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 1.22;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.discovery-meta {
+  flex-wrap: wrap;
+  color: rgba(248, 243, 231, 0.82);
+  font-size: 0.58rem;
+}
+
+.discovery-meta span,
+.discovery-address {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.discovery-address {
+  display: block;
+  color: rgba(248, 243, 231, 0.58);
+  font-size: 0.58rem;
+  font-weight: 760;
+}
+
 .companion-panel {
   padding: 12px;
 }
@@ -893,6 +1008,32 @@ textarea::placeholder {
 
   .game-screen {
     min-height: 100svh;
+  }
+
+  .discovery-grid {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
+  }
+
+  .discovery-grid::-webkit-scrollbar {
+    display: none;
+  }
+
+  .discovery-card {
+    flex: 0 0 min(82%, 300px);
+    display: grid;
+    grid-template-columns: 96px minmax(0, 1fr);
+    min-height: 132px;
+    scroll-snap-align: start;
+  }
+
+  .discovery-card img {
+    height: 100%;
+    aspect-ratio: auto;
   }
 }
 

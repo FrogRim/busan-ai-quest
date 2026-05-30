@@ -15,9 +15,11 @@ import {
   ScanLine,
   ShieldCheck,
   Sparkles,
+  Store,
   Timer,
   Trophy,
   Upload,
+  Utensils,
   Volume2,
   XCircle,
   Zap,
@@ -49,6 +51,9 @@ type Mission = {
   status: MissionStatus;
   confidence?: number;
   judgeNote?: string;
+  placeDetail?: string;
+  storeDetail?: string;
+  foodDetail?: string;
 };
 
 type LogEntry = {
@@ -75,8 +80,16 @@ type MapsConfig = {
 };
 
 type NearbyPlace = {
+  role: 'place' | 'store' | 'food';
+  label: string;
   name: string;
   type: string;
+  detail: string;
+  photoUrl?: string;
+  address?: string;
+  rating?: number;
+  ratingCount?: number;
+  attribution?: string;
 };
 
 type GoogleMapsWindow = Window &
@@ -243,6 +256,9 @@ function mergeMission(fallback: Mission, input?: Partial<ApiMission>): Mission {
     zone: input.zone || fallback.zone,
     proof: input.proof || fallback.proof,
     mood: input.mood || fallback.mood,
+    placeDetail: input.placeDetail || fallback.placeDetail,
+    storeDetail: input.storeDetail || fallback.storeDetail,
+    foodDetail: input.foodDetail || fallback.foodDetail,
     reward: Number.isFinite(input.reward) ? Number(input.reward) : fallback.reward,
     x: Number.isFinite(input.x) ? clamp(Number(input.x), 18, 82) : fallback.x,
     y: Number.isFinite(input.y) ? clamp(Number(input.y), 22, 78) : fallback.y,
@@ -312,6 +328,86 @@ function missionTypes(mood: string) {
   }
 
   return ['tourist_attraction', 'store'];
+}
+
+const discoveryRoles: NearbyPlace['role'][] = ['place', 'store', 'food'];
+
+function formatPlaceType(type: string) {
+  return type
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function detailForRole(role: NearbyPlace['role'], mission: Mission) {
+  if (role === 'store') {
+    return mission.storeDetail || 'A nearby shop gives the quest a human-scale detail to notice.';
+  }
+
+  if (role === 'food') {
+    return mission.foodDetail || 'A local food stop adds flavor and street energy to the route.';
+  }
+
+  return mission.placeDetail || 'This nearby scene frames the mission without giving away the answer.';
+}
+
+function liveDiscoveryDetail(role: NearbyPlace['role'], mission: Mission, type: string) {
+  const typeLabel = formatPlaceType(type).toLowerCase();
+  const mood = mission.mood.toLowerCase();
+
+  if (role === 'store') {
+    return `Use this ${typeLabel} as a texture stop: signs, shelves, and street pace can sharpen the clue.`;
+  }
+
+  if (role === 'food') {
+    return `This ${typeLabel} adds flavor to the ${mood} route through scent, queues, menus, and local noise.`;
+  }
+
+  return `Let this ${typeLabel} set the scene; watch light, sound, and foot traffic before solving.`;
+}
+
+function fallbackDiscoverySpots(mission: Mission): NearbyPlace[] {
+  return [
+    {
+      role: 'place',
+      label: 'Quest place',
+      name: mission.zone,
+      type: mission.mood,
+      detail: detailForRole('place', mission),
+      photoUrl: busanNightMarket,
+    },
+    {
+      role: 'store',
+      label: 'Local store',
+      name: 'Market-side detail',
+      type: 'store',
+      detail: detailForRole('store', mission),
+      photoUrl: busanNightMarket,
+    },
+    {
+      role: 'food',
+      label: 'Food place',
+      name: 'Nearby flavor stop',
+      type: 'restaurant',
+      detail: detailForRole('food', mission),
+      photoUrl: busanNightMarket,
+    },
+  ];
+}
+
+function completeDiscoverySpots(spots: NearbyPlace[], mission: Mission) {
+  const fallbacks = fallbackDiscoverySpots(mission);
+
+  return discoveryRoles.map((role) => spots.find((spot) => spot.role === role) || fallbacks.find((spot) => spot.role === role)!);
+}
+
+function photoUrlFromPlace(place: any) {
+  const photo = place.photos?.[0];
+
+  if (!photo?.getURI) {
+    return undefined;
+  }
+
+  return photo.getURI({ maxWidth: 520, maxHeight: 340 });
 }
 
 function App() {
@@ -959,6 +1055,12 @@ function GameScreen({
   onSubmit,
 }: GameScreenProps) {
   const mapClassName = mapsConfig.enabled ? 'map-stage has-google-map' : 'map-stage';
+  const [discoverySpots, setDiscoverySpots] = useState<NearbyPlace[]>([]);
+  const visibleDiscoverySpots = useMemo(() => completeDiscoverySpots(discoverySpots, mission), [discoverySpots, mission]);
+
+  useEffect(() => {
+    setDiscoverySpots([]);
+  }, [mission.id]);
 
   return (
     <section className="screen game-screen">
@@ -984,7 +1086,13 @@ function GameScreen({
       </div>
 
       <div className={mapClassName} aria-label="Busan mission map">
-        <GoogleQuestMap mapsConfig={mapsConfig} mission={mission} playerPoint={playerPoint} route={route} />
+        <GoogleQuestMap
+          mapsConfig={mapsConfig}
+          mission={mission}
+          playerPoint={playerPoint}
+          route={route}
+          onPlacesChange={setDiscoverySpots}
+        />
         <div className="sea-zone" />
         <div className="street street-a" />
         <div className="street street-b" />
@@ -1028,6 +1136,8 @@ function GameScreen({
           </div>
         )}
       </div>
+
+      <DiscoveryPanel spots={visibleDiscoverySpots} />
 
       <div className="action-dock">
         <button className="icon-button" type="button" onClick={onWalk} title="Scan area" aria-label="Scan area">
@@ -1077,16 +1187,70 @@ function GameScreen({
   );
 }
 
+function DiscoveryPanel({ spots }: { spots: NearbyPlace[] }) {
+  const iconByRole: Record<NearbyPlace['role'], LucideIcon> = {
+    place: MapPin,
+    store: Store,
+    food: Utensils,
+  };
+
+  return (
+    <section className="discovery-panel" aria-label="Game Master local intel">
+      <div className="discovery-head">
+        <span>
+          <Sparkles size={15} />
+          Game Master Intel
+        </span>
+        <span>Live nearby</span>
+      </div>
+      <div className="discovery-grid">
+        {spots.map((spot) => {
+          const Icon = iconByRole[spot.role];
+
+          return (
+            <article className={`discovery-card discovery-${spot.role}`} key={`${spot.role}-${spot.name}`}>
+              <img
+                src={spot.photoUrl || busanNightMarket}
+                alt={`${spot.label}: ${spot.name}`}
+                onError={(event) => {
+                  event.currentTarget.src = busanNightMarket;
+                }}
+              />
+              <div className="discovery-copy">
+                <span className="discovery-label">
+                  <Icon size={13} />
+                  {spot.label}
+                </span>
+                <h2>{spot.name}</h2>
+                <p>{spot.detail}</p>
+                <div className="discovery-meta">
+                  <span>{formatPlaceType(spot.type)}</span>
+                  {typeof spot.rating === 'number' && (
+                    <span>{spot.rating.toFixed(1)} rating{spot.ratingCount ? ` (${spot.ratingCount})` : ''}</span>
+                  )}
+                </div>
+                {spot.address && <span className="discovery-address">{spot.address}</span>}
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function GoogleQuestMap({
   mapsConfig,
   mission,
   playerPoint,
   route,
+  onPlacesChange,
 }: {
   mapsConfig: MapsConfig;
   mission: Mission;
   playerPoint: RoutePoint;
   route: RoutePoint[];
+  onPlacesChange: (places: NearbyPlace[]) => void;
 }) {
   const mapRef = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState<'off' | 'loading' | 'ready' | 'error'>('off');
@@ -1098,6 +1262,7 @@ function GoogleQuestMap({
     if (!mapsConfig.enabled || !mapsConfig.apiKey || !mapRef.current) {
       setStatus('off');
       setPlaces([]);
+      onPlacesChange([]);
       return;
     }
 
@@ -1160,29 +1325,81 @@ function GoogleQuestMap({
 
         try {
           const { Place, SearchNearbyRankPreference } = await google.maps.importLibrary('places');
-          const response = await Place.searchNearby({
-            fields: ['displayName', 'primaryType'],
-            locationRestriction: {
-              center: playerLatLng,
-              radius: 450,
+          const discoverySearches: Array<{
+            role: NearbyPlace['role'];
+            label: string;
+            types: string[];
+            excludedTypes?: string[];
+          }> = [
+            { role: 'place', label: 'Quest place', types: missionTypes(mission.mood) },
+            {
+              role: 'store',
+              label: 'Local store',
+              types: ['gift_shop', 'market', 'general_store', 'book_store', 'clothing_store', 'food_store', 'store'],
+              excludedTypes: ['shopping_mall', 'department_store', 'hypermarket', 'supermarket'],
             },
-            includedPrimaryTypes: missionTypes(mission.mood),
-            maxResultCount: 5,
-            rankPreference: SearchNearbyRankPreference.POPULARITY,
-          });
+            { role: 'food', label: 'Food place', types: ['restaurant', 'cafe', 'bakery', 'seafood_restaurant'] },
+          ];
+          const usedNames = new Set<string>();
+          const nextPlaces: NearbyPlace[] = [];
+
+          for (const search of discoverySearches) {
+            try {
+              const request: Record<string, unknown> = {
+                fields: ['displayName', 'primaryType', 'shortFormattedAddress', 'formattedAddress', 'rating', 'userRatingCount', 'photos'],
+                locationRestriction: {
+                  center: playerLatLng,
+                  radius: 650,
+                },
+                includedPrimaryTypes: search.types,
+                maxResultCount: 6,
+                rankPreference:
+                  search.role === 'place' ? SearchNearbyRankPreference.POPULARITY : SearchNearbyRankPreference.DISTANCE,
+              };
+
+              if (search.excludedTypes) {
+                request.excludedPrimaryTypes = search.excludedTypes;
+              }
+
+              const response = await Place.searchNearby(request);
+              const place = (response.places || []).find((candidate: any) => {
+                const name = candidate.displayName;
+
+                return typeof name === 'string' && !usedNames.has(name);
+              });
+
+              if (!place) {
+                continue;
+              }
+
+              const name = place.displayName;
+              usedNames.add(name);
+              const type = place.primaryType || search.types[0];
+              nextPlaces.push({
+                role: search.role,
+                label: search.label,
+                name,
+                type,
+                detail: liveDiscoveryDetail(search.role, mission, type),
+                photoUrl: photoUrlFromPlace(place),
+                address: place.shortFormattedAddress || place.formattedAddress,
+                rating: typeof place.rating === 'number' ? place.rating : undefined,
+                ratingCount: typeof place.userRatingCount === 'number' ? place.userRatingCount : undefined,
+              });
+            } catch {
+              continue;
+            }
+          }
 
           if (!cancelled) {
-            const nextPlaces = (response.places || [])
-              .map((place: any) => ({
-                name: place.displayName || 'Nearby place',
-                type: place.primaryType || 'place',
-              }))
-              .slice(0, 3);
-            setPlaces(nextPlaces);
+            const completePlaces = completeDiscoverySpots(nextPlaces, mission);
+            setPlaces(completePlaces);
+            onPlacesChange(completePlaces);
           }
         } catch {
           if (!cancelled) {
             setPlaces([]);
+            onPlacesChange([]);
           }
         }
 
@@ -1193,6 +1410,7 @@ function GoogleQuestMap({
         if (!cancelled) {
           setStatus('error');
           setPlaces([]);
+          onPlacesChange([]);
         }
       }
     }
@@ -1202,7 +1420,7 @@ function GoogleQuestMap({
     return () => {
       cancelled = true;
     };
-  }, [mapsConfig, mission.id, mission.mood, mission.x, mission.y, playerPoint.x, playerPoint.y, route.length]);
+  }, [mapsConfig, mission, mission.id, mission.mood, mission.x, mission.y, onPlacesChange, playerPoint.x, playerPoint.y, route.length]);
 
   if (!mapsConfig.enabled) {
     return null;
