@@ -25,6 +25,17 @@ OPENAI_API_KEY=your_server_side_key
 
 The key is read only by `server.mjs`. Do not put it in a `VITE_` variable or any frontend file.
 
+For Firebase demo deployment, the Function reads the key from Firestore instead of Firebase Functions secrets:
+
+```text
+collection: config
+document: openai
+field: apiKey
+value: sk-...
+```
+
+The included `firestore.rules` denies all browser client access to this document. Cloud Functions read it through Firebase Admin SDK.
+
 ## Current Prototype
 
 - QR-style landing and nickname entry

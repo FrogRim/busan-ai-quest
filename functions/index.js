@@ -1,10 +1,15 @@
 import { onRequest } from 'firebase-functions/v2/https';
-import { defineSecret, defineString } from 'firebase-functions/params';
+import { defineString } from 'firebase-functions/params';
+import { initializeApp } from 'firebase-admin/app';
+import { getFirestore } from 'firebase-admin/firestore';
 import OpenAI from 'openai';
 
-const openAIKey = defineSecret('OPENAI_API_KEY');
+initializeApp();
+
 const modelParam = defineString('OPENAI_MODEL', { default: 'gpt-4.1-mini' });
 const realtimeModelParam = defineString('OPENAI_REALTIME_MODEL', { default: 'gpt-realtime' });
+let cachedApiKey = '';
+let cacheExpiresAt = 0;
 
 const missionSchema = {
   type: 'object',
@@ -57,8 +62,30 @@ function readBody(request) {
   }
 }
 
-function client() {
-  return new OpenAI({ apiKey: openAIKey.value() });
+async function resolveApiKey() {
+  if (process.env.OPENAI_API_KEY) {
+    return process.env.OPENAI_API_KEY;
+  }
+
+  if (cachedApiKey && Date.now() < cacheExpiresAt) {
+    return cachedApiKey;
+  }
+
+  const snapshot = await getFirestore().doc('config/openai').get();
+  const apiKey = snapshot.get('apiKey');
+
+  if (typeof apiKey !== 'string' || !apiKey.startsWith('sk-')) {
+    throw new Error('OpenAI key is not configured in Firestore at config/openai.apiKey.');
+  }
+
+  cachedApiKey = apiKey;
+  cacheExpiresAt = Date.now() + 5 * 60 * 1000;
+
+  return cachedApiKey;
+}
+
+async function client() {
+  return new OpenAI({ apiKey: await resolveApiKey() });
 }
 
 function model() {
@@ -108,8 +135,17 @@ function normalizePercent(value, fallback) {
 }
 
 async function handleStatus(_request, response) {
+  let live = false;
+
+  try {
+    await resolveApiKey();
+    live = true;
+  } catch {
+    live = false;
+  }
+
   sendJson(response, 200, {
-    live: true,
+    live,
     model: model(),
     realtimeModel: realtimeModel(),
   });
@@ -117,7 +153,8 @@ async function handleStatus(_request, response) {
 
 async function handleMissionNext(request, response) {
   const context = readBody(request);
-  const result = await client().responses.create({
+  const openai = await client();
+  const result = await openai.responses.create({
     model: model(),
     input: [
       {
@@ -160,7 +197,8 @@ async function handleMissionNext(request, response) {
 
 async function handleCompanionMessage(request, response) {
   const context = readBody(request);
-  const result = await client().responses.create({
+  const openai = await client();
+  const result = await openai.responses.create({
     model: model(),
     input: [
       {
@@ -200,7 +238,8 @@ async function handleJudge(request, response) {
     });
   }
 
-  const result = await client().responses.create({
+  const openai = await client();
+  const result = await openai.responses.create({
     model: model(),
     input: [
       {
@@ -240,10 +279,11 @@ async function handleJudge(request, response) {
 }
 
 async function handleRealtimeToken(_request, response) {
+  const apiKey = await resolveApiKey();
   const realtimeResponse = await fetch('https://api.openai.com/v1/realtime/client_secrets', {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${openAIKey.value()}`,
+      Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -269,7 +309,6 @@ export const api = onRequest(
   {
     region: 'asia-northeast3',
     cors: true,
-    secrets: [openAIKey],
     timeoutSeconds: 120,
     memory: '512MiB',
   },

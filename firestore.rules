@@ -1,0 +1,15 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Demo secret config is read only by Firebase Admin SDK inside Cloud Functions.
+    // Never allow browser clients to read or write it.
+    match /config/openai {
+      allow read, write: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
