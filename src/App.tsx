@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import {
   Camera,
@@ -67,6 +67,26 @@ type ApiJudgement = {
   feedback: string;
   points_awarded: number;
 };
+
+type MapsConfig = {
+  enabled: boolean;
+  apiKey?: string;
+  mapId?: string;
+};
+
+type NearbyPlace = {
+  name: string;
+  type: string;
+};
+
+type GoogleMapsWindow = Window &
+  typeof globalThis & {
+    google?: any;
+    __busanMapsReady?: () => void;
+    __busanGoogleMapsPromise?: Promise<any>;
+  };
+
+const JAGALCHI_CENTER = { lat: 35.0968, lng: 129.0306 };
 
 type MissionSeed = Omit<Mission, 'id' | 'status' | 'reward' | 'x' | 'y'> & {
   baseX: number;
@@ -241,6 +261,59 @@ async function imageAssetToDataUrl(url: string): Promise<string> {
   });
 }
 
+async function loadGoogleMaps(apiKey: string) {
+  const mapsWindow = window as GoogleMapsWindow;
+
+  if (mapsWindow.google?.maps?.importLibrary) {
+    return mapsWindow.google;
+  }
+
+  if (mapsWindow.__busanGoogleMapsPromise) {
+    return mapsWindow.__busanGoogleMapsPromise;
+  }
+
+  mapsWindow.__busanGoogleMapsPromise = new Promise((resolve, reject) => {
+    mapsWindow.__busanMapsReady = () => resolve(mapsWindow.google);
+
+    const script = document.createElement('script');
+    const params = new URLSearchParams({
+      key: apiKey,
+      v: 'weekly',
+      loading: 'async',
+      libraries: 'places,marker',
+      callback: '__busanMapsReady',
+    });
+
+    script.src = `https://maps.googleapis.com/maps/api/js?${params.toString()}`;
+    script.async = true;
+    script.onerror = () => reject(new Error('Google Maps failed to load.'));
+    document.head.appendChild(script);
+  });
+
+  return mapsWindow.__busanGoogleMapsPromise;
+}
+
+function pointToLatLng(point: RoutePoint) {
+  return {
+    lat: JAGALCHI_CENTER.lat + (50 - point.y) * 0.000052,
+    lng: JAGALCHI_CENTER.lng + (point.x - 50) * 0.00007,
+  };
+}
+
+function missionTypes(mood: string) {
+  const normalized = mood.toLowerCase();
+
+  if (normalized.includes('food') || normalized.includes('senses')) {
+    return ['restaurant', 'store'];
+  }
+
+  if (normalized.includes('craft') || normalized.includes('local') || normalized.includes('visual')) {
+    return ['store'];
+  }
+
+  return ['tourist_attraction', 'store'];
+}
+
 function App() {
   const [stage, setStage] = useState<Stage>('landing');
   const [nickname, setNickname] = useState('');
@@ -260,6 +333,7 @@ function App() {
   const [logs, setLogs] = useState<LogEntry[]>(() => firstLog(generateMission(418, 0, 'arrival')));
   const [agentMode, setAgentMode] = useState<AgentMode>('checking');
   const [agentModel, setAgentModel] = useState('local');
+  const [mapsConfig, setMapsConfig] = useState<MapsConfig>({ enabled: false });
 
   const playerPoint = route[route.length - 1];
   const missionProgress = completed.length + (mission.status === 'passed' ? 1 : 0);
@@ -298,6 +372,27 @@ function App() {
         if (!cancelled) {
           setAgentMode('simulated');
           setAgentModel('local');
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetch('/api/maps-config')
+      .then((response) => response.json())
+      .then((config: MapsConfig) => {
+        if (!cancelled) {
+          setMapsConfig(config.enabled ? config : { enabled: false });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setMapsConfig({ enabled: false });
         }
       });
 
@@ -674,6 +769,7 @@ function App() {
           timer={timer}
           hintCount={hintCount}
           agentMode={agentMode}
+          mapsConfig={mapsConfig}
           voiceOn={voiceOn}
           companionText={companionText}
           logs={logs}
@@ -831,6 +927,7 @@ type GameScreenProps = {
   timer: number;
   hintCount: number;
   agentMode: AgentMode;
+  mapsConfig: MapsConfig;
   voiceOn: boolean;
   companionText: string;
   logs: LogEntry[];
@@ -851,6 +948,7 @@ function GameScreen({
   timer,
   hintCount,
   agentMode,
+  mapsConfig,
   voiceOn,
   companionText,
   logs,
@@ -860,6 +958,8 @@ function GameScreen({
   onVoice,
   onSubmit,
 }: GameScreenProps) {
+  const mapClassName = mapsConfig.enabled ? 'map-stage has-google-map' : 'map-stage';
+
   return (
     <section className="screen game-screen">
       <div className="game-topbar">
@@ -883,7 +983,8 @@ function GameScreen({
         <AgentBadge agent="judge" detail={agentMode === 'live' ? 'live' : 'waiting'} />
       </div>
 
-      <div className="map-stage" aria-label="Stylized Busan mission map">
+      <div className={mapClassName} aria-label="Busan mission map">
+        <GoogleQuestMap mapsConfig={mapsConfig} mission={mission} playerPoint={playerPoint} route={route} />
         <div className="sea-zone" />
         <div className="street street-a" />
         <div className="street street-b" />
@@ -973,6 +1074,154 @@ function GameScreen({
         ))}
       </div>
     </section>
+  );
+}
+
+function GoogleQuestMap({
+  mapsConfig,
+  mission,
+  playerPoint,
+  route,
+}: {
+  mapsConfig: MapsConfig;
+  mission: Mission;
+  playerPoint: RoutePoint;
+  route: RoutePoint[];
+}) {
+  const mapRef = useRef<HTMLDivElement | null>(null);
+  const [status, setStatus] = useState<'off' | 'loading' | 'ready' | 'error'>('off');
+  const [places, setPlaces] = useState<NearbyPlace[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!mapsConfig.enabled || !mapsConfig.apiKey || !mapRef.current) {
+      setStatus('off');
+      setPlaces([]);
+      return;
+    }
+
+    async function drawMap() {
+      setStatus('loading');
+
+      try {
+        const google = await loadGoogleMaps(mapsConfig.apiKey!);
+
+        if (cancelled || !mapRef.current) {
+          return;
+        }
+
+        const { Map } = await google.maps.importLibrary('maps');
+        const playerLatLng = pointToLatLng(playerPoint);
+        const missionLatLng = pointToLatLng({ x: mission.x, y: mission.y });
+        const map = new Map(mapRef.current, {
+          center: playerLatLng,
+          zoom: 17,
+          mapId: mapsConfig.mapId || undefined,
+          disableDefaultUI: true,
+          clickableIcons: false,
+          gestureHandling: 'none',
+          keyboardShortcuts: false,
+        });
+
+        new google.maps.Marker({
+          position: playerLatLng,
+          map,
+          title: 'Player',
+          label: 'P',
+        });
+
+        new google.maps.Circle({
+          map,
+          center: missionLatLng,
+          radius: 80,
+          strokeColor: '#ff715e',
+          strokeOpacity: 0.9,
+          strokeWeight: 2,
+          fillColor: '#ff715e',
+          fillOpacity: 0.16,
+        });
+
+        route.slice(-6).forEach((point, index) => {
+          new google.maps.Marker({
+            position: pointToLatLng(point),
+            map,
+            title: `Route point ${index + 1}`,
+            icon: {
+              path: google.maps.SymbolPath.CIRCLE,
+              scale: 4,
+              fillColor: '#9fd356',
+              fillOpacity: 1,
+              strokeColor: '#071015',
+              strokeWeight: 1,
+            },
+          });
+        });
+
+        try {
+          const { Place, SearchNearbyRankPreference } = await google.maps.importLibrary('places');
+          const response = await Place.searchNearby({
+            fields: ['displayName', 'primaryType'],
+            locationRestriction: {
+              center: playerLatLng,
+              radius: 450,
+            },
+            includedPrimaryTypes: missionTypes(mission.mood),
+            maxResultCount: 5,
+            rankPreference: SearchNearbyRankPreference.POPULARITY,
+          });
+
+          if (!cancelled) {
+            const nextPlaces = (response.places || [])
+              .map((place: any) => ({
+                name: place.displayName || 'Nearby place',
+                type: place.primaryType || 'place',
+              }))
+              .slice(0, 3);
+            setPlaces(nextPlaces);
+          }
+        } catch {
+          if (!cancelled) {
+            setPlaces([]);
+          }
+        }
+
+        if (!cancelled) {
+          setStatus('ready');
+        }
+      } catch {
+        if (!cancelled) {
+          setStatus('error');
+          setPlaces([]);
+        }
+      }
+    }
+
+    drawMap();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mapsConfig, mission.id, mission.mood, mission.x, mission.y, playerPoint.x, playerPoint.y, route.length]);
+
+  if (!mapsConfig.enabled) {
+    return null;
+  }
+
+  return (
+    <>
+      <div ref={mapRef} className="google-map-layer" />
+      <div className={`map-provider-chip map-${status}`}>
+        {status === 'ready' ? 'Google Maps' : status === 'loading' ? 'Loading map' : 'Map fallback'}
+      </div>
+      {places.length > 0 && (
+        <div className="places-strip" aria-label="Nearby Google Places">
+          {places.map((place) => (
+            <span key={`${place.name}-${place.type}`}>{place.name}</span>
+          ))}
+        </div>
+      )}
+    </>
   );
 }
 

@@ -8,6 +8,12 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Browser key is intentionally served through the API so it can be paired
+    // with domain/API restrictions and changed without rebuilding the frontend.
+    match /config/googleMaps {
+      allow read, write: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }

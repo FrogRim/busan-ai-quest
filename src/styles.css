@@ -426,6 +426,79 @@ textarea::placeholder {
   background-size: 34px 34px;
 }
 
+.google-map-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: #102027;
+  filter: saturate(0.78) contrast(0.95) brightness(0.8);
+}
+
+.has-google-map .sea-zone,
+.has-google-map .street {
+  z-index: 1;
+  opacity: 0.16;
+  mix-blend-mode: screen;
+}
+
+.has-google-map .harbor-label,
+.has-google-map .map-label,
+.has-google-map .route-dot,
+.has-google-map .mission-zone,
+.has-google-map .player-pin {
+  z-index: 4;
+}
+
+.map-provider-chip,
+.places-strip {
+  position: absolute;
+  z-index: 5;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(6, 16, 21, 0.78);
+  color: var(--ink);
+  font-size: 0.68rem;
+  font-weight: 850;
+}
+
+.map-provider-chip {
+  right: 12px;
+  top: 12px;
+  padding: 5px 8px;
+}
+
+.map-ready {
+  color: var(--mint);
+}
+
+.map-loading {
+  color: var(--amber);
+}
+
+.map-error {
+  color: var(--coral);
+}
+
+.places-strip {
+  right: 12px;
+  bottom: 12px;
+  left: 12px;
+  display: flex;
+  gap: 6px;
+  overflow: hidden;
+  padding: 6px;
+}
+
+.places-strip span {
+  min-width: 0;
+  overflow: hidden;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .sea-zone {
   position: absolute;
   inset: 0 0 0 61%;

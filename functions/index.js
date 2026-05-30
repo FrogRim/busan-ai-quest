@@ -84,6 +84,25 @@ async function resolveApiKey() {
   return cachedApiKey;
 }
 
+async function resolveMapsConfig() {
+  if (process.env.GOOGLE_MAPS_API_KEY) {
+    return {
+      enabled: true,
+      apiKey: process.env.GOOGLE_MAPS_API_KEY,
+      mapId: process.env.GOOGLE_MAPS_MAP_ID || '',
+    };
+  }
+
+  const snapshot = await getFirestore().doc('config/googleMaps').get();
+  const apiKey = snapshot.get('apiKey');
+
+  return {
+    enabled: typeof apiKey === 'string' && apiKey.length > 0,
+    apiKey: typeof apiKey === 'string' ? apiKey : '',
+    mapId: snapshot.get('mapId') || '',
+  };
+}
+
 async function client() {
   return new OpenAI({ apiKey: await resolveApiKey() });
 }
@@ -149,6 +168,12 @@ async function handleStatus(_request, response) {
     model: model(),
     realtimeModel: realtimeModel(),
   });
+}
+
+async function handleMapsConfig(_request, response) {
+  const config = await resolveMapsConfig();
+
+  sendJson(response, 200, config);
 }
 
 async function handleMissionNext(request, response) {
@@ -323,6 +348,11 @@ export const api = onRequest(
 
       if (request.method === 'GET' && path === '/status') {
         await handleStatus(request, response);
+        return;
+      }
+
+      if (request.method === 'GET' && path === '/maps-config') {
+        await handleMapsConfig(request, response);
         return;
       }
 

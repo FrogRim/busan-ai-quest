@@ -36,6 +36,32 @@ value: sk-...
 
 The included `firestore.rules` denies all browser client access to this document. Cloud Functions read it through Firebase Admin SDK.
 
+## Google Maps And Places
+
+The map screen can use Google Maps JavaScript API and Places Library. Locally, set:
+
+```bash
+GOOGLE_MAPS_API_KEY=your_browser_key
+GOOGLE_MAPS_MAP_ID=optional_map_id
+```
+
+For Firebase demo deployment, create:
+
+```text
+collection: config
+document: googleMaps
+fields:
+  apiKey: your_browser_key
+  mapId: optional_map_id
+```
+
+Restrict the Google Maps browser key in Google Cloud Console to these APIs and websites:
+
+- Maps JavaScript API
+- Places API
+- `http://localhost:5173/*`
+- `https://fly-frog-66c85.web.app/*`
+
 ## Current Prototype
 
 - QR-style landing and nickname entry

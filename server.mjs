@@ -109,6 +109,14 @@ app.get('/api/status', (_request, response) => {
   });
 });
 
+app.get('/api/maps-config', (_request, response) => {
+  response.json({
+    enabled: Boolean(process.env.GOOGLE_MAPS_API_KEY),
+    apiKey: process.env.GOOGLE_MAPS_API_KEY || '',
+    mapId: process.env.GOOGLE_MAPS_MAP_ID || '',
+  });
+});
+
 app.post('/api/mission/next', async (request, response) => {
   if (!requireOpenAI(response)) {
     return;
