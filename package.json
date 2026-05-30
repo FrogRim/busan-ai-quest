@@ -1,0 +1,26 @@
+{
+  "name": "busan-ai-quest",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node server.mjs",
+    "build": "tsc && vite build",
+    "preview": "node server.mjs --prod"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^4.5.2",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "lucide-react": "^0.468.0",
+    "openai": "^6.39.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "~5.8.3",
+    "vite": "^6.3.5"
+  }
+}
