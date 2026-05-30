@@ -358,7 +358,7 @@ function App() {
   useEffect(() => {
     let cancelled = false;
 
-    fetch('/api/status')
+    fetch('/api/status', { cache: 'no-store' })
       .then((response) => response.json())
       .then((status: { live?: boolean; model?: string }) => {
         if (cancelled) {
@@ -383,7 +383,7 @@ function App() {
   useEffect(() => {
     let cancelled = false;
 
-    fetch('/api/maps-config')
+    fetch('/api/maps-config', { cache: 'no-store' })
       .then((response) => response.json())
       .then((config: MapsConfig) => {
         if (!cancelled) {

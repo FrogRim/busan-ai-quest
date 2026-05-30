@@ -246,17 +246,33 @@ async function handleCompanionMessage(request, response) {
 
 async function handleJudge(request, response) {
   const { mission, answer, imageDataUrl, routeCount, hintCount } = readBody(request);
+  const hasImageProof = typeof imageDataUrl === 'string' && imageDataUrl.startsWith('data:image/');
+
+  if (!hasImageProof) {
+    sendJson(response, 200, {
+      live: true,
+      judgement: {
+        passed: false,
+        confidence: 12,
+        reason: 'Photo proof is required before the Judge can validate the mission.',
+        feedback: 'Upload a clear mission photo, then add a short answer and submit again.',
+        points_awarded: 0,
+      },
+    });
+    return;
+  }
+
   const content = [
     {
       type: 'input_text',
       text:
         `Judge this Busan AI Quest proof.\nMission: ${JSON.stringify(mission)}\n` +
         `Answer: ${answer || ''}\nRoute points: ${routeCount || 0}\nHints used: ${hintCount || 0}\n` +
-        'Accept creative valid proof. Reject unrelated, low-effort, or impossible proof. If image is missing, be stricter but still evaluate the answer.',
+        'Accept creative valid proof. Reject unrelated, low-effort, or impossible proof. A photo is required to pass.',
     },
   ];
 
-  if (typeof imageDataUrl === 'string' && imageDataUrl.startsWith('data:image/')) {
+  if (hasImageProof) {
     content.push({
       type: 'input_image',
       image_url: imageDataUrl,
@@ -334,6 +350,7 @@ export const api = onRequest(
   {
     region: 'asia-northeast3',
     cors: true,
+    invoker: 'public',
     timeoutSeconds: 120,
     memory: '512MiB',
   },
